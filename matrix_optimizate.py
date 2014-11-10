@@ -21,7 +21,7 @@ import hashlib as hash
 G = nx.DiGraph() # Inicia G
 switches = {}
 
-class Auxiliar(object):
+class BuildTopo(object):
   """ Auxiliar e usada para guardar os metodos a serem utilizados. """
 
 
@@ -51,6 +51,21 @@ class Auxiliar(object):
         output.remove(x)
     return output
 
+
+
+  def new_topology(self, topo, sws):
+    """
+    Funcao retorna nova topologia 
+    new_topology(topologia, switch a ser removido) 
+    """
+    newlist = []
+    i = 0 
+    for i in range(len(topo)):
+      if topo[i][0] != sws:     
+        newlist.append(topo[i])
+    return newlist
+
+
   def grafo(self, vertice, aresta, src, dst):
   # Funcao retorna menor caminho
   # Entra com: grafo(vertice,aresta,origem,destino)
@@ -62,55 +77,31 @@ class Auxiliar(object):
     return nx.dijkstra_path(G,src,dst)
  
 
-  
-  
 
+build = BuildTopo()
+switch_list = list()
+switch_list = [[4,3,3,2],[2,3,3,4],[2,3,3,1],[4,2,2,1]]
 
-
-
-
-
-aux = Auxiliar()
-k = list()
-k = [[4,3,3,2],[2,3,3,4],[2,3,3,1],[4,2,2,1]]
-
-matriz = aux.uniq(k) # matriz sem os valores repetidos
+matriz = build.uniq(switch_list) # matriz sem os valores repetidos
 vertex = list()
 edges = list()
 
 for i in matriz:
   vertex.append(i[0])
-  edges.append(aux.uniq((i[0],i[3])))
+  edges.append(build.uniq((i[0],i[3])))
 
-print "vertex", aux.uniq(vertex)
+print "vertex", build.uniq(vertex)
 print "edge", edges
 
-print "shortest-path", aux.grafo(aux.uniq(vertex), edges, 2, 4)
+print "shortest-path", build.grafo(build.uniq(vertex), edges, 2, 4)
 
+switch_removed = build.grafo(build.uniq(vertex), edges, 2, 4)
 
- ###### Working on this function #######
+###### Working on this function #######
 
-"""for i in xrange(0,len(k)):
-  item = k.__getitem__(i)
-  has_item = item.count(4)
-  if has_item == 1:
-    new_list = list()
-    new_list.append(item)
-    print new_list
-k = aux.del_val(item, k)
-print k    
-"""
-def new_topology(topo, sws):
-  # Funcao retorna nova topologia 
-  # new_topology(topologia, switch a ser removido)
-  for i in xrange(0,len(topo)):
-    if topo[i][0] != sws:
-      new_list = list()
-      new_list.append(topo[i])
-  return new_list
-
-
-print new_topology(k,4)
+for i in switch_removed:
+  nova_topologia = build.new_topology(switch_list, i)
+print nova_topologia
 
 
 
