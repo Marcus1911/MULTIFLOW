@@ -19,23 +19,79 @@ from pox.openflow.discovery import Discovery
 from pox.host_tracker import host_tracker
 import pox.openflow.libopenflow_01 as of
 from collections import *
+import matplotlib.pyplot as plt
+import networkx as nx
+import numpy as np
+import pylab
+import itertools
+import hashlib as hash
 
+G = nx.DiGraph() # Starts the Graph
 
-class Auxiliar(object):
-  """ """
+class BuildTopo(object):
+  """ In this class we create methods for correct build topology """
 
   def __init__ (self):
     self.test = None
 	
-  def delete_value(self, input):
-    """Delete repeated values 
+  def uniq(self, input):
     """
-
+    Funcao retira valores repetidos da lista.
+    Entra com lista inteira e retorna lista sem 
+    valores repetidos
+    """
     output = []
     for x in input:
       if x not in output:
         output.append(x)
     return output
+	
+  def delete_value(self, search, input):
+    """
+    Funcao deleta valores da lista
+    del_val(valor_a_ser_deletado, lista)
+    """
+    output = []
+    for x in input:
+      output.append(x)
+      if search in output:
+        output.remove(x)
+    return output
+
+  def new_topology(self, topo, sws):
+    """
+    Funcao retorna nova topologia 
+    new_topology(topologia, switch a ser removido) 
+    """
+    newlist = []
+    i = 0 
+    for i in range(len(topo)):
+      if topo[i][0] != sws:     
+        newlist.append(topo[i])
+    return newlist
+
+
+  def grafo(self, vertice, aresta, src, dst):
+    """
+    Funcao retorna menor caminho
+    Entra com: grafo(vertice,aresta,origem,destino)
+    Ira retornar o menor caminho calculado por Dijkstra
+    """
+    G.clear()
+    G.add_nodes_from(vertice) # colocar vertice no lugar de new_list
+    G.add_edges_from(aresta) # colocar aresta no lugar de edge
+    return nx.dijkstra_path(G,src,dst)
+ 
+
+  def _install (self, switch, in_port, out_port, match, buf = None):
+    msg = of.ofp_flow_mod()
+    msg.match = match
+    msg.match.in_port = in_port
+    msg.idle_timeout = FLOW_IDLE_TIMEOUT
+    msg.hard_timeout = FLOW_HARD_TIMEOUT
+    msg.actions.append(of.ofp_action_output(port = out_port))
+    msg.buffer_id = buf
+    switch.connection.send(msg)
 
 
 class Multiflow(EventMixin):
@@ -73,37 +129,35 @@ class Multiflow(EventMixin):
     l = event.link
     self.switch_memo.append([l.dpid1,l.port1,l.dpid2,l.port2])
     print ([l.dpid1,l.port1,l.dpid2,l.port2])
-    auxiliar = Auxiliar()
+    build = BuildTopo()
 
     """ Used when switch-list assembling """
     
     for i in self.switch_memo:
       self.v.append(i[0])
-    self.vertex = auxiliar.delete_value(self.v)
+    self.vertex = build.uniq(self.v)
   
     for i in self.switch_memo:
       self.a.append((i[0], i[2]))
-    self.edge = auxiliar.delete_value(self.a) 
+    self.edge = build.uniq(self.a) 
 
   def _handle_HostEvent (self, event):
     """ Used to show Avalaible Hosts and its port numbers"""
     self.host_alive.append(event.entry) 
-    print event.entry
+    #print event.entry
+
+
 
   def _handle_PacketIn(self, event):
+     build = BuildTopo()
      packet = event.parsed
      packet_ipv4 = packet.find('ipv4')
      packet_tcp = packet.find('tcp')
      packet_udp = packet.find('udp')
 
-     def beUnpack(byte):
-       """ Converts byte string to integer. Use Big-endian byte order."""
-       try:
-         return sum([ord(b) << (8 * i) for i, b in enumerate(byte[::-1])])
-       except:
-         return 'Erro'
+
      if packet.ARP_TYPE:
-       """ If ARP, forwarding with L2/L3 if avaliable... """
+       #If ARP, forwarding with L2/L3 if avaliable... 
        msg = of.ofp_flow_mod()
        msg.match = of.ofp_match.from_packet(packet)
        msg.actions.append(of.ofp_action_output(port = of.OFPP_NORMAL))
@@ -112,24 +166,93 @@ class Multiflow(EventMixin):
      if packet_udp:
        msg = of.ofp_flow_mod()
        msg.match = of.ofp_match.from_packet(packet)
-       msg.actions.append(of.ofp_action_output(port = of.OFPP_NORMAL))
+       msg.actions.append(of.ofp_action_output(port = of.OFPP_NONE))
        event.connection.send(msg)
 
-     if packet_tcp: 
+     if not packet_tcp: return
+     if packet_tcp.SYN and packet_tcp.ACK: return
+     if packet_tcp.SYN is True:
+
+       def beUnpack(byte):
+         """ Converts byte string to integer. Use Big-endian byte order """
+         try:
+           return sum([ord(b) << (8 * i) for i, b in enumerate(byte[::-1])])
+         except:
+           return 'impossible to convert'
+
        for option in packet_tcp.options:
          if isinstance(option, pkt.TCP.mptcp_opt):
            name_option = type(option).__name__ #,vars(option)
            if name_option == 'mp_capable_opt':
-             print name_option
-             match = of.ofp_match()
-             match.nw_proto=6
-             match.dl_type=0x800
-             match.nw_src = packet_ipv4.srcip
-             match.nw_dst = packet_ipv4.dstip
-             match.tp_src = packet_tcp.srcport
-             match.tp_dst = packet_tcp.dstport
+             src = packet.src
+             dst = packet.dst
+             for host in self.host_alive:
+                if src == host.macaddr:
+                  source = host.dpid, host.port
+                  print "source dpid", source
+                elif dst == host.macaddr:
+                  destination = host.dpid, host.port
+                  print "destination dpid", destination
+             try:
+               shortest_path_capable = build.grafo(self.vertex, self.edge, source[0], destination[0])
+               print shortest_path_capable
+               
+               pre_multiflow_to_switch = list() 
+               multiflow_to_switch = list() 
+               for j in shortest_path_capable:
+                 for i in self.switch_memo:
+                   if i[0] == j:
+                      pre_multiflow_to_switch.append(i)
+
+               #print pre_multiflow_to_switch
+               for j in shortest_path_capable:
+                 for i in pre_multiflow_to_switch:
+                   if i[2] == j:
+                     multiflow_to_switch.append(i)
+               print "path", multiflow_to_switch
+               
+                 
+               match = of.ofp_match()
+               match.nw_proto=6
+               match.dl_type=0x800
+               match.nw_src = packet_ipv4.srcip
+               match.nw_dst = packet_ipv4.dstip
+               match.tp_src = packet_tcp.srcport
+               match.tp_dst = packet_tcp.dstport
+               
+               for i in multiflow_to_switch:
+                 msg = of.ofp_flow_mod()
+                 msg.match = match
+                 msg.actions.append(of.ofp_action_output(port = i[1]))
+                 core.openflow.sendToDPID(i[0],msg)
+               
+                 msg = of.ofp_flow_mod()
+                 msg.match = match
+                 msg.actions.append(of.ofp_action_output(port = i[3]))
+                 core.openflow.sendToDPID(i[2],msg)
+
+
+               msg = of.ofp_flow_mod()
+               msg.match = match
+               msg.actions.append(of.ofp_action_output(port = source[1]))
+               core.openflow.sendToDPID(source[0],msg)
+
+
+               msg = of.ofp_flow_mod()
+               msg.match = match
+               msg.actions.append(of.ofp_action_output(port = destination[1]))
+               core.openflow.sendToDPID(destination[0],msg)
+
+
+
+             except:
+               print 'Waiting paths...'
+               return
+
+"""  
+             
                     
-           # Reverse Match 
+             # Reverse Match 
            
              rmatch = of.ofp_match()
              rmatch.nw_proto=6
@@ -161,7 +284,7 @@ class Multiflow(EventMixin):
              msg.match = rmatch
              msg.actions.append(of.ofp_action_output(port = 1))
              core.openflow.sendToDPID(1,msg)
-           
+         
            if name_option == 'mp_join_opt':
              print name_option
              hash_key = beUnpack(option.rtoken)
@@ -233,61 +356,9 @@ class Multiflow(EventMixin):
                
              else:
                print "Existe um valor dentro da tabela hash:", self.Hash_table
-               """
-	       match = of.ofp_match()
-               match.nw_proto=6
-               match.dl_type=0x800
-               match.nw_src = packet_ipv4.srcip
-               match.nw_dst = packet_ipv4.dstip
-               match.tp_src = packet_tcp.srcport
-               match.tp_dst = packet_tcp.dstport
-                    
-               # Reverse Match 
-           
-               rmatch = of.ofp_match()
-               rmatch.nw_proto=6
-               rmatch.dl_type=0x800
-               rmatch.nw_src = packet_ipv4.dstip
-               rmatch.nw_dst = packet_ipv4.srcip
-               rmatch.tp_src = packet_tcp.dstport
-               rmatch.tp_dst = packet_tcp.srcport
- 
-               # Path         
-                 
-               msg = of.ofp_flow_mod()
-               msg.match = match
-               msg.actions.append(of.ofp_action_output(port = 5))
-               core.openflow.sendToDPID(1,msg)
-                    
-               msg = of.ofp_flow_mod()
-               msg.match = match
-               msg.actions.append(of.ofp_action_output(port = 2))
-               core.openflow.sendToDPID(3,msg)
 
-               msg = of.ofp_flow_mod()
-               msg.match = match
-               msg.actions.append(of.ofp_action_output(port = 2))
-               core.openflow.sendToDPID(4,msg)
-                  
-
-               # Reverse Path 
-               msg = of.ofp_flow_mod()
-               msg.match = rmatch
-               msg.actions.append(of.ofp_action_output(port = 5))
-               core.openflow.sendToDPID(4,msg)
-                    
-	       msg = of.ofp_flow_mod()
-               msg.match = match
-               msg.actions.append(of.ofp_action_output(port = 1))
-               core.openflow.sendToDPID(3,msg)
-
-               msg = of.ofp_flow_mod()
-               msg.match = rmatch
-               msg.actions.append(of.ofp_action_output(port = 1))
-               core.openflow.sendToDPID(1,msg)
-           """
 	   #else:
-   	   #  return
+"""   	   #  return
 
 def launch():
 
