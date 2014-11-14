@@ -83,15 +83,11 @@ class BuildTopo(object):
     return nx.dijkstra_path(G,src,dst)
  
 
-  def _install (self, switch, in_port, out_port, match, buf = None):
+  def _install (self, switch, in_port, match):
     msg = of.ofp_flow_mod()
     msg.match = match
-    msg.match.in_port = in_port
-    msg.idle_timeout = FLOW_IDLE_TIMEOUT
-    msg.hard_timeout = FLOW_HARD_TIMEOUT
-    msg.actions.append(of.ofp_action_output(port = out_port))
-    msg.buffer_id = buf
-    switch.connection.send(msg)
+    msg.actions.append(of.ofp_action_output(port = in_port))
+    core.openflow.sendToDPID(switch,msg)
 
 
 class Multiflow(EventMixin):
@@ -128,13 +124,13 @@ class Multiflow(EventMixin):
 
     l = event.link
     self.switch_memo.append([l.dpid1,l.port1,l.dpid2,l.port2])
-    print ([l.dpid1,l.port1,l.dpid2,l.port2])
+    print l.end[0] #([l.dpid1,l.port1,l.dpid2,l.port2])
     build = BuildTopo()
 
     """ Used when switch-list assembling """
     
     for i in self.switch_memo:
-      self.v.append(i[0])
+      self.v.append(i[1])
     self.vertex = build.uniq(self.v)
   
     for i in self.switch_memo:
@@ -189,37 +185,50 @@ class Multiflow(EventMixin):
              for host in self.host_alive:
                 if src == host.macaddr:
                   source = host.dpid, host.port
-                  print "source dpid", source
+                  #print "source dpid", source
                 elif dst == host.macaddr:
                   destination = host.dpid, host.port
-                  print "destination dpid", destination
+                  #print "destination dpid", destination
              try:
                shortest_path_capable = build.grafo(self.vertex, self.edge, source[0], destination[0])
                print shortest_path_capable
                
-               pre_multiflow_to_switch = list() 
-               multiflow_to_switch = list() 
-               for j in shortest_path_capable:
-                 for i in self.switch_memo:
-                   if i[0] == j:
-                      pre_multiflow_to_switch.append(i)
-
-               #print pre_multiflow_to_switch
-               for j in shortest_path_capable:
-                 for i in pre_multiflow_to_switch:
-                   if i[2] == j:
-                     multiflow_to_switch.append(i)
-               print "path", multiflow_to_switch
-               
+               rules = list()
+               for i in xrange(0,len(shortest_path_capable)):
+                 for j in xrange(0, len(self.switch_memo)):
+                 #    print i, sw[j][0]
+                   try:
+                     if shortest_path_capable[i]  == self.switch_memo[j][0] and shortest_path_capable[i+1] == self.switch_memo[j][2]:
+                       print shortest_path_capable[i], [self.switch_memo[j][0], self.switch_memo[j][1]]
+                       rules.append([self.switch_memo[j][0],self.switch_memo[j][1]])
+                   except:
+                     rules.append(list(destination))     
+                     print "last switch, adding the host"
+ 
+               # working on this loop
+               # Doesn't work quite better yet
+               for i in xrange(0, len(shortest_path_capable) + 1):
+                 rule_to_switch = rules.pop()
                  
-               match = of.ofp_match()
-               match.nw_proto=6
-               match.dl_type=0x800
-               match.nw_src = packet_ipv4.srcip
-               match.nw_dst = packet_ipv4.dstip
-               match.tp_src = packet_tcp.srcport
-               match.tp_dst = packet_tcp.dstport
+     
                
+                 match = of.ofp_match()
+                 match.nw_proto=6
+                 match.dl_type=0x800
+                 match.nw_src = packet_ipv4.srcip
+                 match.nw_dst = packet_ipv4.dstip
+                 match.tp_src = packet_tcp.srcport
+                 match.tp_dst = packet_tcp.dstport
+                 _install(rule_to_switch[0], rule_to_switch[1], match)
+                 print "forwarding-rule", rule_to_switch
+              
+                 
+                 
+
+               # need reverse path
+
+               
+               """
                for i in multiflow_to_switch:
                  msg = of.ofp_flow_mod()
                  msg.match = match
@@ -242,7 +251,7 @@ class Multiflow(EventMixin):
                msg.match = match
                msg.actions.append(of.ofp_action_output(port = destination[1]))
                core.openflow.sendToDPID(destination[0],msg)
-
+               """
 
 
              except:
@@ -372,7 +381,7 @@ def launch():
   launch()
 
   from openflow.of_01 import launch
-  launch(port= 1234)
+  launch(port= 1233)
 
   from openflow.discovery import launch
   launch()
