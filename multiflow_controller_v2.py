@@ -257,81 +257,11 @@ class Multiflow(EventMixin):
                        msg.actions.append(of.ofp_action_output(port = r[1]))
                        core.openflow.sendToDPID(r[0],msg)      
 
-		
-
-
-
-
-
-
-
-
-               """
-               for i in multiflow_to_switch:
-                 msg = of.ofp_flow_mod()
-                 msg.match = match
-                 msg.actions.append(of.ofp_action_output(port = i[1]))
-                 core.openflow.sendToDPID(i[0],msg)
-               
-                 msg = of.ofp_flow_mod()
-                 msg.match = match
-                 msg.actions.append(of.ofp_action_output(port = i[3]))
-                 core.openflow.sendToDPID(i[2],msg)
-
-
-               msg = of.ofp_flow_mod()
-               msg.match = match
-               msg.actions.append(of.ofp_action_output(port = source[1]))
-               core.openflow.sendToDPID(source[0],msg)
-
-
-               msg = of.ofp_flow_mod()
-               msg.match = match
-               msg.actions.append(of.ofp_action_output(port = destination[1]))
-               core.openflow.sendToDPID(destination[0],msg)
-               """
-
 
              except:
                print 'Waiting paths...'
                return
-
-"""  
-             
                     
-             # Reverse Match 
-           
-             rmatch = of.ofp_match()
-             rmatch.nw_proto=6
-             rmatch.dl_type=0x800
-             rmatch.nw_src = packet_ipv4.dstip
-             rmatch.nw_dst = packet_ipv4.srcip
-             rmatch.tp_src = packet_tcp.dstport
-             rmatch.tp_dst = packet_tcp.srcport
-             
-	     # Path 
-             msg = of.ofp_flow_mod()
-             msg.match = match
-             msg.actions.append(of.ofp_action_output(port = 4))
-             core.openflow.sendToDPID(1,msg)
-                    
-             msg = of.ofp_flow_mod()
-             msg.match = match
-             msg.actions.append(of.ofp_action_output(port = 2))
-             core.openflow.sendToDPID(4,msg)
-                  
-
-             # Reverse Path 
-             msg = of.ofp_flow_mod()
-             msg.match = rmatch
-             msg.actions.append(of.ofp_action_output(port = 4))
-             core.openflow.sendToDPID(4,msg)
-         
-             msg = of.ofp_flow_mod()
-             msg.match = rmatch
-             msg.actions.append(of.ofp_action_output(port = 1))
-             core.openflow.sendToDPID(1,msg)
-         
            if name_option == 'mp_join_opt':
              print name_option
              hash_key = beUnpack(option.rtoken)
@@ -342,7 +272,7 @@ class Multiflow(EventMixin):
              topologia = str(lista)   
              #Hash_table[hash_key] = topologia # Append token and topology
 	     resultado = self.Hash_table.get(hash_key)
-
+             """
              if resultado is None:
                print "Nao tem Token, alocando em uma rota e inserindo na tabela..."
                match = of.ofp_match()
