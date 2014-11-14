@@ -205,13 +205,11 @@ class Multiflow(EventMixin):
                      rules.append(list(destination))     
                      print "last switch, adding the host"
  
-               # working on this loop
-               # Doesn't work quite better yet
-               for i in xrange(0, len(shortest_path_capable) + 1):
-                 rule_to_switch = rules.pop()
-                 
-     
-               
+               # working on this loop          
+               for r in rules: 
+                 print "switch", r[0]
+                 print "port", r[1]
+                
                  match = of.ofp_match()
                  match.nw_proto=6
                  match.dl_type=0x800
@@ -219,15 +217,55 @@ class Multiflow(EventMixin):
                  match.nw_dst = packet_ipv4.dstip
                  match.tp_src = packet_tcp.srcport
                  match.tp_dst = packet_tcp.dstport
-                 _install(rule_to_switch[0], rule_to_switch[1], match)
-                 print "forwarding-rule", rule_to_switch
-              
-                 
-                 
+
+                 msg = of.ofp_flow_mod()
+                 msg.match = match
+                 msg.actions.append(of.ofp_action_output(port = r[1]))
+                 core.openflow.sendToDPID(r[0],msg)      
 
                # need reverse path
+                 
+               r_shortest_path_capable = shortest_path_capable[::-1]
+               print "\nREVERSE\n", r_shortest_path_capable
+               reverse_rules = list()
 
-               
+	       
+               for i in xrange(0,len(r_shortest_path_capable)):
+                 for j in xrange(0, len(self.switch_memo)):
+                   try:
+                     if r_shortest_path_capable[i]  == self.switch_memo[j][0] and r_shortest_path_capable[i+1] == self.switch_memo[j][2]:
+                       print r_shortest_path_capable[i], [self.switch_memo[j][0], self.switch_memo[j][1]]
+                       reverse_rules.append([self.switch_memo[j][0],self.switch_memo[j][1]])
+                   except:
+                     reverse_rules.append(list(source))     
+                     print "last switch, adding the host", reverse_rules
+
+                     for r in reverse_rules: 
+                       print "switch", r[0]
+                       print "port", r[1]
+                
+                       rmatch = of.ofp_match()
+                       rmatch.nw_proto=6
+                       rmatch.dl_type=0x800
+                       rmatch.nw_src = packet_ipv4.dstip
+                       rmatch.nw_dst = packet_ipv4.srcip
+                       rmatch.tp_src = packet_tcp.dstport
+                       rmatch.tp_dst = packet_tcp.srcport
+
+                       msg = of.ofp_flow_mod()
+                       msg.match = rmatch
+                       msg.actions.append(of.ofp_action_output(port = r[1]))
+                       core.openflow.sendToDPID(r[0],msg)      
+
+		
+
+
+
+
+
+
+
+
                """
                for i in multiflow_to_switch:
                  msg = of.ofp_flow_mod()
