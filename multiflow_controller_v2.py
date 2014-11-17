@@ -108,6 +108,8 @@ class Multiflow(EventMixin):
     self.v = [] # _handle_LinkEvent()
     self.vertex = [] # _handle_LinkEvent()
     self.edge = [] # _handle_LinkEvent()
+    self.new_vertex =[]
+    self.new_edge = []
     self.Hash_table = {'key':'value'} # Hash table deve iniciar no construtor
 
     def startup ():
@@ -190,6 +192,7 @@ class Multiflow(EventMixin):
                   destination = host.dpid, host.port
                   #print "destination dpid", destination
              try:
+               global shortest_path_capable 
                shortest_path_capable = build.grafo(self.vertex, self.edge, source[0], destination[0])
                print shortest_path_capable
                
@@ -205,7 +208,8 @@ class Multiflow(EventMixin):
                      rules.append(list(destination))     
                      print "last switch, adding the host"
  
-               # working on this loop          
+               # rules loop
+          
                for r in rules: 
                  print "switch", r[0]
                  print "port", r[1]
@@ -223,7 +227,7 @@ class Multiflow(EventMixin):
                  msg.actions.append(of.ofp_action_output(port = r[1]))
                  core.openflow.sendToDPID(r[0],msg)      
 
-               # need reverse path
+               # reverse path
                  
                r_shortest_path_capable = shortest_path_capable[::-1]
                print "\nREVERSE\n", r_shortest_path_capable
@@ -263,79 +267,140 @@ class Multiflow(EventMixin):
                return
                     
            if name_option == 'mp_join_opt':
+             """MP_JOIN"""
+
              print name_option
              hash_key = beUnpack(option.rtoken)
+             print "\n\n\n HASH-KEY \n\n\n", hash_key
              # Hash table will disjoint two-mp_join 
              Hash_table = dict()
-             lista = list()
-             lista.append([1,2,3])
-             topologia = str(lista)   
+             #lista = list()
+             #lista.append([1,2,3])
+             #topologia = str(lista)   
              #Hash_table[hash_key] = topologia # Append token and topology
-	     resultado = self.Hash_table.get(hash_key)
-             """
+	     resultado = self.Hash_table.get(hash_key)  
+
              if resultado is None:
+               # TODO: IT DOESNT WORK WITH AN ARRAY
+               list_median = len(shortest_path_capable)/2
+               #print "valor a ser retirado", shortest_path_capable[list_median]
+               print build.new_topology(self.switch_memo, shortest_path_capable[list_median])
+               new_topo = build.new_topology(self.switch_memo, shortest_path_capable[list_median])
+               
+               for i in xrange(0, len(self.switch_memo)):
+                 self.switch_memo.pop()
+               
+               # TODO Is it possible improve this?
+
+               #print "sw-memo-empty", self.switch_memo
+               for i in new_topo:
+                 self.switch_memo.append(i)
+               
+	       
+               #print "sw-memo-full", self.switch_memo
+               
+               a = list()
+               v = list()
+
+               for i in self.switch_memo:
+                 v.append(i[1])
+                 self.new_vertex = build.uniq(v)
+  
+               for i in self.switch_memo:
+                 a.append((i[0], i[2]))
+                 self.new_edge = build.uniq(a)
+
+               #######################################
+
+
                print "Nao tem Token, alocando em uma rota e inserindo na tabela..."
-               match = of.ofp_match()
-               match.nw_proto=6
-               match.dl_type=0x800
-               match.nw_src = packet_ipv4.srcip
-               match.nw_dst = packet_ipv4.dstip
-               match.tp_src = packet_tcp.srcport
-               match.tp_dst = packet_tcp.dstport
-                    
-               # Reverse Match 
-           
-               rmatch = of.ofp_match()
-               rmatch.nw_proto=6
-               rmatch.dl_type=0x800
-               rmatch.nw_src = packet_ipv4.dstip
-               rmatch.nw_dst = packet_ipv4.srcip
-               rmatch.tp_src = packet_tcp.dstport
-               rmatch.tp_dst = packet_tcp.srcport
+               # add o token:
+               self.Hash_table[hash_key] = new_topo
+
+               src = packet.src
+               dst = packet.dst
+               for host in self.host_alive:
+                 if src == host.macaddr:
+                   source = host.dpid, host.port
+                   #print "source dpid", source
+                 elif dst == host.macaddr:
+                   destination = host.dpid, host.port
+                   #print "destination dpid", destination
+               try:
+                 shortest_path_join = build.grafo(self.new_vertex, self.new_edge, source[0], destination[0])
+                 #print "shortest join", shortest_path_join
+               
+                 rules = list()
+                 for i in xrange(0,len(shortest_path_join)):
+                   for j in xrange(0, len(self.switch_memo)):
+                   #    print i, sw[j][0]
+                     try:
+                       if shortest_path_join[i]  == self.switch_memo[j][0] and shortest_path_join[i+1] == self.switch_memo[j][2]:
+                         #print shortest_path_join[i], [self.switch_memo[j][0], self.switch_memo[j][1]]
+                         rules.append([self.switch_memo[j][0],self.switch_memo[j][1]])
+                     except:
+                       rules.append(list(destination))     
+                       #print "last switch, adding the host"
  
-               # Path         
-                           
-               msg = of.ofp_flow_mod()
-               msg.match = match
-               msg.actions.append(of.ofp_action_output(port = 3))
-               core.openflow.sendToDPID(1,msg)
-                    
-               msg = of.ofp_flow_mod()
-               msg.match = match
-               msg.actions.append(of.ofp_action_output(port = 2))
-               core.openflow.sendToDPID(2,msg)
+                 # working on this loop          
+                 for r in rules: 
+                   #print "switch", r[0]
+                   #print "port", r[1]
+                
+                   match = of.ofp_match()
+                   match.nw_proto=6
+                   match.dl_type=0x800
+                   match.nw_src = packet_ipv4.srcip
+                   match.nw_dst = packet_ipv4.dstip
+                   match.tp_src = packet_tcp.srcport
+                   match.tp_dst = packet_tcp.dstport
 
-               msg = of.ofp_flow_mod()
-               msg.match = match
-               msg.actions.append(of.ofp_action_output(port = 2))
-               core.openflow.sendToDPID(4,msg)
-                  
+                   msg = of.ofp_flow_mod()
+                   msg.match = match
+                   msg.actions.append(of.ofp_action_output(port = r[1]))
+                   core.openflow.sendToDPID(r[0],msg)      
 
-               # Reverse Path 
-               msg = of.ofp_flow_mod()
-               msg.match = rmatch
-               msg.actions.append(of.ofp_action_output(port = 3))
-               core.openflow.sendToDPID(4,msg)
-                    
-	       msg = of.ofp_flow_mod()
-               msg.match = match
-               msg.actions.append(of.ofp_action_output(port = 1))
-               core.openflow.sendToDPID(2,msg)
+                 # need reverse path
+                 
+                 r_shortest_path_join = shortest_path_join[::-1]
+                # print "\nREVERSE\n", r_shortest_path_join
+                 reverse_rules = list()
 
-               msg = of.ofp_flow_mod()
-               msg.match = rmatch
-               msg.actions.append(of.ofp_action_output(port = 1))
-               core.openflow.sendToDPID(1,msg)
-               
-              
-               # adiciona o token:
-               self.Hash_table[hash_key] = topologia
-               
+	       
+                 for i in xrange(0,len(r_shortest_path_join)):
+                   for j in xrange(0, len(self.switch_memo)):
+                     try:
+                       if r_shortest_path_join[i]  == self.switch_memo[j][0] and r_shortest_path_join[i+1] == self.switch_memo[j][2]:
+                        # print r_shortest_path_join[i], [self.switch_memo[j][0], self.switch_memo[j][1]]
+                         reverse_rules.append([self.switch_memo[j][0],self.switch_memo[j][1]])
+                     except:
+                       reverse_rules.append(list(source))     
+                      # print "last switch, adding the host", reverse_rules
+
+                       for r in reverse_rules: 
+                         #print "switch", r[0]
+                        # print "port", r[1]
+                
+                         rmatch = of.ofp_match()
+                         rmatch.nw_proto=6
+                         rmatch.dl_type=0x800
+                         rmatch.nw_src = packet_ipv4.dstip
+                         rmatch.nw_dst = packet_ipv4.srcip
+                         rmatch.tp_src = packet_tcp.dstport
+                         rmatch.tp_dst = packet_tcp.srcport
+
+                         msg = of.ofp_flow_mod()
+                         msg.match = rmatch
+                         msg.actions.append(of.ofp_action_output(port = r[1]))
+                         core.openflow.sendToDPID(r[0],msg)      
+               except:
+                 print 'Waiting paths...'
+                 return
+             
+                             
              else:
                print "Existe um valor dentro da tabela hash:", self.Hash_table
 
-	   #else:
-"""   	   #  return
 
 def launch():
 
